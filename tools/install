@@ -1,0 +1,55 @@
+#!/bin/bash
+# --------------------------------------------------------------------------
+# Convert Armbian-image from a single-filesystem image to a two-filesystem image.
+#
+# This script installs all necessary files.
+#
+# Author: Bernhard Bablok
+# License: GPL3
+#
+# Website: https://github.com/bablokb/armbian-convert
+#
+# --------------------------------------------------------------------------
+
+# --- defaults used during installation   ----------------------------------
+
+PACKAGES=""
+PROJECT="armbian-convert"
+
+# --- basic packages   ------------------------------------------------------
+
+check_packages() {
+  local p
+  for p in "$@"; do
+    echo -en "Checking $p ... " >&2
+    dpkg -s "$p" 2>/dev/null | grep -q "Status.*ok" || return 0
+    echo "ok" >&2
+  done
+  return 1
+}
+
+install_packages() {
+  if [ -n "$PACKAGES" ] && check_packages $PACKAGES; then
+    echo -e "[INFO] installing additional packages" 2>&1
+    apt-get update
+    apt-get -y install $PACKAGES
+  fi
+}
+
+
+# --- install specific files   ----------------------------------------------
+
+install_files() {
+  echo -e "[INFO] installing project files" 2>&1
+
+  for f in `find $(dirname "$0")/../files/ -type f`; do
+    cp -v "$f" "${f#*files}"
+    chown root:root "${f#*files}"
+  done
+  chmod 744 /usr/local/sbin/armbian_convert.sh
+}
+
+# --- main program   --------------------------------------------------------
+
+install_packages
+install_files
