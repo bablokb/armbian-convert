@@ -11,16 +11,61 @@
 #
 # --------------------------------------------------------------------------
 
+# usage message   -------------------------------------------------------------
+
+usage() {
+  local pgm=`basename $0`
+  echo -e "\n$pgm: rewrite Armbian image to a two-partition system
+  \nusage: `basename $0` [options] source-image\n\
+  Possible options:\n\
+    -o image    target-image (defaults to source.new.img)\n\
+    -n dev-nr   configure system to use /dev/mmcblk<dev-nr>\n\
+                (default: use heuristic)\n\
+    -k          keep extracted image\n\
+    -h          show this help\n\
+"
+  exit 3
+}
+
+# set defaults   --------------------------------------------------------------
+
+setDefaults() {
+  removeImg=0
+  targetImage=""
+  devNr=""
+}
+
+# parse arguments and set variables -------------------------------------------
+
+parseArguments() {
+  while getopts ":o:n:kh" opt; do
+    case $opt in
+      o) targetImage="$OPTARG";;
+      n) devNr="$OPTARG";;
+      k) removeImg=2;;
+      h) usage;;
+      ?) echo "error: illegal option: $OPTARG"
+           usage;;
+    esac
+  done
+
+  shift $((OPTIND-1))
+  srcImage="$1"
+  if [ -z "$srcImage" ]; then
+    echo -e "no image specified" >&2
+    exit 3
+  fi
+}
+
 # --- extract source image   -----------------------------------------
 
 extractSourceImage() {
-  if [ "${1##*.}" = "7z" ]; then
-    7z e '-i!*.img' -o${1%/*} "$1"
-    srcImage="${1%.*}.img"
-  else
-    srcImage="$1"
+  if [ "${srcImage##*.}" = "7z" ]; then
+    7z e '-i!*.img' -o${srcImage%/*} "$srcImage"
+    srcImage="${srcImage%.*}.img"
+    [ $removeImg -eq 0 ] && removeImg=1
   fi
-  targetImage="${srcImage%.*}.new.img"
+  [ -z "$targetImage" ] && targetImage="${srcImage%.*}.new.img"
 }
 
 # --- query size of target-image   -----------------------------------
@@ -86,13 +131,15 @@ copyFiles() {
 
 fixFiles() {
   # we need to set rootdev to mmcblk0p2 or mmcblk1p2
-  if [ -n "$rootdev" ]; then
+  if [ -z "$devNr" ]; then
     # use heuristics
     if grep -qi "odroid" <<< "$srcImage"; then
       rootdev="/dev/mmcblk1p2"                   # at least on HC1
     else 
       rootdev="/dev/mmcblk0p2"
     fi
+  else
+    rootdev="/dev/mmcblkp${devNr}2"
   fi
   sed -i -e "/rootdev=/s,=.*,=\"$rootdev\"," "$targetMnt/boot/armbianEnv.txt"
 
@@ -101,7 +148,7 @@ fixFiles() {
   eval $(grep rootdev= "$targetMnt/boot/armbianEnv.txt")
   sed -i  -e "/\W\/\W/s,^[^ \t]*,$rootdev," "$targetMnt/etc/fstab"
   cat >> "$targetMnt/etc/fstab" <<EOF
-/dev/${rootdev:0:-1}1 /boot   ext4 defaults,acl,user_xattr,noatime,nodiratime   1 2
+${rootdev:0:-1}1 /boot   ext4 defaults,acl,user_xattr,noatime,nodiratime   1 2
 EOF
 }
 
@@ -121,7 +168,7 @@ cleanup() {
   losetup -D "$targetDevice"
   
   # remove temporary image
-  if [ "$srcImage" != "$1" ]; then
+  if [ $removeImg -eq 1 ]; then
     # image-name not passed in as argument
     rm -f "$srcImage"
   fi
@@ -129,7 +176,9 @@ cleanup() {
 
 # --- main program   -------------------------------------------------
 
-extractSourceImage "$@"
+setDefaults
+parseArguments "$@"
+extractSourceImage
 getSize
 createTargetImage
 partitionTargetImage
@@ -137,4 +186,4 @@ mountPartitions
 copyFiles
 fixFiles
 umountPartitions
-cleanup "$@"
+cleanup
