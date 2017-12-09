@@ -61,6 +61,10 @@ parseArguments() {
 
 extractSourceImage() {
   if [ "${srcImage##*.}" = "7z" ]; then
+    if ! type -p "7z" > /dev/null; then
+      echo "error: you need to install program 7z to run this script!" >&2
+      exit 3
+    fi
     7z e '-i!*.img' -o${srcImage%/*} "$srcImage"
     srcImage="${srcImage%.*}.img"
     [ $removeImg -eq 0 ] && removeImg=1
