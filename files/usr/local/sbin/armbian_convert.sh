@@ -145,11 +145,13 @@ fixFiles() {
   else
     rootdev="/dev/mmcblkp${devNr}2"
   fi
-  sed -i -e "/rootdev=/s,=.*,=$rootdev," "$targetMnt/boot/armbianEnv.txt"
+  if [ -f "$targetMnt/boot/armbianEnv.txt" ]; then
+    sed -i -e "/rootdev=/s,=.*,=$rootdev," "$targetMnt/boot/armbianEnv.txt"
+  else
+    echo "rootdev=$rootdev" > "$targetMnt/boot/armbianEnv.txt"
+  fi
 
   # fix fstab
-  # set variable rootdev
-  eval $(grep rootdev= "$targetMnt/boot/armbianEnv.txt")
   sed -i  -e "/\W\/\W/s,^[^ \t]*,$rootdev," "$targetMnt/etc/fstab"
   cat >> "$targetMnt/etc/fstab" <<EOF
 ${rootdev:0:-1}1 /boot   ext4 defaults,acl,user_xattr,noatime,nodiratime   1 2
