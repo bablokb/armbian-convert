@@ -79,14 +79,18 @@ getSize() {
   local currentSize
   currentSize=`stat -c "%s" "$srcImage"`
   let targetSize=currentSize+104857600
+
+  # start of first partition
+  firstSector=$(sfdisk -ql -o Start "srcImage" | sed -n 2p)
+  firstSector=$(echo $firstSector)          # remove leading blanks
 }
 
 # --- create target image   ------------------------------------------
 
 createTargetImage() {
-  # take the first 2048 sectors from source-image to pick up
+  # take the first xxx sectors from source-image to pick up
   # the boot-loader
-  dd if="$srcImage" of="$targetImage" bs=512 count=2048
+  dd if="$srcImage" of="$targetImage" bs=512 count=$firstSector
   
   # extend image to target-size
   dd if=/dev/zero of="$targetImage" bs=1 count=0 seek="$targetSize"
@@ -99,7 +103,8 @@ partitionTargetImage() {
   modprobe loop
   targetDevice=`losetup --show -f -P "$targetImage"`
   # delete existing partition, create two new ones
-  echo -e "d\nn\np\n1\n2048\n+204799\nn\np\n2\n206848\n\nw\n" | fdisk "$targetDevice"
+  let startSecond=$firstSector+204800
+  echo -e "d\nn\np\n1\n$firstSector\n+204799\nn\np\n2\n$startSecond\n\nw\n" | fdisk "$targetDevice"
   sleep 3
   partprobe
   losetup -D "$targetDevice"
@@ -143,7 +148,7 @@ fixFiles() {
       rootdev="/dev/mmcblk0p2"
     fi
   else
-    rootdev="/dev/mmcblkp${devNr}2"
+    rootdev="/dev/mmcblk${devNr}p2"
   fi
   if [ -f "$targetMnt/boot/armbianEnv.txt" ]; then
     sed -i -e "/rootdev=/s,=.*,=$rootdev," "$targetMnt/boot/armbianEnv.txt"
