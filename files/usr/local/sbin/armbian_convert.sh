@@ -21,6 +21,7 @@ usage() {
     -o image    target-image (defaults to source.new.img)\n\
     -n dev-nr   configure system to use /dev/mmcblk<dev-nr>\n\
                 (default: use heuristic)\n\
+    -U          use UUIDs instead of partition-names\n\
     -k          keep extracted image\n\
     -h          show this help\n\
 "
@@ -31,6 +32,7 @@ usage() {
 
 setDefaults() {
   removeImg=0
+  useUUID=0
   targetImage=""
   devNr=""
 }
@@ -38,10 +40,11 @@ setDefaults() {
 # parse arguments and set variables -------------------------------------------
 
 parseArguments() {
-  while getopts ":o:n:kh" opt; do
+  while getopts ":o:n:Ukh" opt; do
     case $opt in
       o) targetImage="$OPTARG";;
       n) devNr="$OPTARG";;
+      U) useUUID=1;;
       k) removeImg=2;;
       h) usage;;
       ?) echo "error: illegal option: $OPTARG"
@@ -113,6 +116,13 @@ partitionTargetImage() {
   targetDevice=`losetup --show -f -P "$targetImage"`
   mkfs.ext4  "${targetDevice}p1"
   mkfs.ext4 "${targetDevice}p2"
+
+  if [ "$useUUID" -eq 1 ]; then
+    targetUUIDp1=$(blkid -o export -s UUID "${targetDevice}p1" | \
+                                        sed -ne "/UUID/s/UUID=//p")
+    targetUUIDp2=$(blkid -o export -s UUID "${targetDevice}p2" | \
+                                        sed -ne "/UUID/s/UUID=//p")
+  fi
 }
 
 # --- mount source and target partitions   ---------------------------
@@ -139,17 +149,22 @@ copyFiles() {
 # --- fix values in boot-environment   -------------------------------
 
 fixFiles() {
-  # we need to set rootdev to mmcblk0p2 or mmcblk1p2
-  if [ -z "$devNr" ]; then
-    # use heuristics
-    if grep -qi "odroid" <<< "$srcImage"; then
-      rootdev="/dev/mmcblk1p2"                   # at least on HC1
-    else 
-      rootdev="/dev/mmcblk0p2"
-    fi
+  if [ "$useUUID" -eq 1 ]; then
+    rootdev="UUID=$targetUUIDp2"
   else
-    rootdev="/dev/mmcblk${devNr}p2"
+    # we need to set rootdev to mmcblk0p2 or mmcblk1p2
+    if [ -z "$devNr" ]; then
+      # use heuristics
+      if grep -qi "odroid" <<< "$srcImage"; then
+        rootdev="/dev/mmcblk1p2"                   # at least on HC1
+      else
+        rootdev="/dev/mmcblk0p2"
+      fi
+    else
+      rootdev="/dev/mmcblk${devNr}p2"
+    fi
   fi
+
   if [ -f "$targetMnt/boot/armbianEnv.txt" ]; then
     sed -i -e "/rootdev=/s,=.*,=$rootdev," "$targetMnt/boot/armbianEnv.txt"
   else
@@ -158,9 +173,15 @@ fixFiles() {
 
   # fix fstab
   sed -i  -e "/\W\/\W/s,^[^ \t]*,$rootdev," "$targetMnt/etc/fstab"
-  cat >> "$targetMnt/etc/fstab" <<EOF
+  if [ "$useUUID" -eq 1 ]; then
+    cat >> "$targetMnt/etc/fstab" <<EOF
+$targetUUIDp1 /boot   ext4 defaults,acl,user_xattr,noatime,nodiratime   1 2
+EOF
+  else
+    cat >> "$targetMnt/etc/fstab" <<EOF
 ${rootdev:0:-1}1 /boot   ext4 defaults,acl,user_xattr,noatime,nodiratime   1 2
 EOF
+  fi
 }
 
 # --- umount partitions   --------------------------------------------
