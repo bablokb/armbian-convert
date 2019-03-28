@@ -84,7 +84,7 @@ getSize() {
   let targetSize=currentSize+104857600
 
   # start of first partition
-  firstSector=$(sfdisk -ql -o Start "srcImage" | sed -n 2p)
+  firstSector=$(sfdisk -ql -o Start "$srcImage" | sed -n 2p)
   firstSector=$(echo $firstSector)          # remove leading blanks
 }
 
