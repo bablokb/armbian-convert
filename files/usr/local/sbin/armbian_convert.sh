@@ -71,6 +71,14 @@ extractSourceImage() {
     7z e '-i!*.img' -o${srcImage%/*} "$srcImage"
     srcImage="${srcImage%.*}.img"
     [ $removeImg -eq 0 ] && removeImg=1
+  elif [ "${srcImage##*.}" = "xz" ]; then
+    if ! type -p "xz" > /dev/null; then
+      echo "error: you need to install program xz to run this script!" >&2
+      exit 3
+    fi
+    xz -dc "$srcImage" > "${srcImage%.*}"
+    srcImage="${srcImage%.*}"
+    [ $removeImg -eq 0 ] && removeImg=1
   fi
   [ -z "$targetImage" ] && targetImage="${srcImage%.*}.new.img"
 }
